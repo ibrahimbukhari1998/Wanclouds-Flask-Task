@@ -17,5 +17,8 @@ s.headers = headers = {
 # response = s.get(BASE + "auth/logout")
 # print(response.json())
 
+response = s.get(BASE + "sync")
+print(response.json())
+
 
 

@@ -1,10 +1,15 @@
 """ Main Flask App """
+import json
+import urllib
+import requests
 from flask import Flask, session
 from flask_session import Session
 from flask_restful import Api, Resource, reqparse, fields, marshal_with, abort
 from flask_bcrypt import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
-# from datetime import timedelta
+from celery import Celery
+from datetime import date
+
 
 # Flask App initialization and Database Setting
 app = Flask(__name__)
@@ -12,9 +17,25 @@ api = Api(app)
 app.config['SECRET_KEY'] = '$yedMuh4mm4d13rah!m3ukhar1'
 app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_TYPE"] = "filesystem"
-Session(app)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['CELERY_BROKER_URL'] = 'redis://localhost:6379/0'
+app.config['CELERY_RESULT_BACKEND'] = 'redis://localhost:6379/0'
+
+Session(app)
 db = SQLAlchemy(app)
+celery = Celery(app.name, broker=app.config['CELERY_BROKER_URL'])
+celery.conf.update(app.config)
+
+
+
+# back4app data 
+url = 'https://parseapi.back4app.com/classes/Carmodels_Car_Model_List?count=1&limit=10000&order=-Year'
+headers = {
+    'X-Parse-Application-Id': 'a6DWLKNCiKbsogNcSzd7wYO5qtct55785LfeEqzq', # This is your app's application id
+    'X-Parse-REST-API-Key': '0VoZCDYVF40nmx6WrDSn9pIKHDAjeT4hyyRL46fW' # This is your app's REST API key
+}
+
+
 
 # Relational Database Tables in which each variable is a Column
 class UserModel(db.Model):
@@ -42,6 +63,7 @@ class CarModel(db.Model):
 # This Creates the defined Table Schema in the database
 # with app.app_context():
 #     db.create_all()
+
 
 
 # Validation Functions
@@ -73,10 +95,12 @@ def User_Pass_Validate(username, password):
         abort(400, message="Failed! Password must start with an alphabet and must not contain any spaces")
 
 
+
 # Argument Parser which helps validate input
 user_args = reqparse.RequestParser()
 user_args.add_argument("username", type=str, help="Username is required", required=True)
 user_args.add_argument("password", type=str, help="Password is required", required=True)
+
 
 
 # Searalize an object
@@ -84,6 +108,7 @@ user_fields = {
     "username": fields.String,
     "password": fields.String
 }
+
 
 
 # Building various Api Endpoints 
@@ -138,10 +163,55 @@ class Logout(Resource):
             abort(400, message="You are not logged in")
 
 
+class StartSync(Resource):
+    """ This starts the sync of the dataset """
+    
+    def get(self):
+        # Sync_dataset()
+        Sync_dataset.apply_async(countdown=86400)
+        return CarModel.query.count()
+
 # Redirecting the Endpoints to the correct URL
 api.add_resource(Register, "/auth/register")
 api.add_resource(Login, "/auth/login")
 api.add_resource(Logout, "/auth/logout")
+api.add_resource(StartSync, "/sync")
+
+
+
+# Periodic Sync of Dataset
+@celery.task
+def Sync_dataset():
+    """ This functions collects the data from the back4app url and limits it only 10 years """
+    
+    data = json.loads(requests.get(url, headers=headers).content.decode('utf-8'))
+    current_year = date.today().year
+    car_query = CarModel.query.all()
+    
+    for car in data["results"]:
+        timestamp = list(car["createdAt"])
+        timestamp_year = timestamp[:4]
+        car_year = int(''.join(timestamp_year))
+        
+        if current_year-car_year<=10:
+            car_check = True
+            if car_query:
+                
+                for car_db in car_query:
+                    if car["objectId"] == car_db.objectId:
+                        car_check = False
+                        break
+                
+            if car_check:
+                car_instance = CarModel(objectId = car["objectId"], Year = car["Year"], Make = car["Make"], Model = car["Model"], Category = car["Category"], createdAt = car["createdAt"], updatedAt = car["updatedAt"] )
+                try:
+                    db.session.add(car_instance)
+                    db.session.commit()
+                    print("Car of Object ID ", car["objectId"], "has been added to the database")
+                except:
+                    print("Oops! Something went wrong while adding Cars to the Database")
+            
+
 
 
 # Settings for running the Flask Application
