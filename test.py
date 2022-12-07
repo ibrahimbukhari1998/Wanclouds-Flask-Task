@@ -8,6 +8,6 @@ s.headers = headers = {
     'Content-Type': 'application/json'
 }
 
-response = s.post(BASE + "user/register", json={"username":"ibrahimbukhari6", "password":"ibrahim19"})
+response = s.post(BASE + "auth/register", json={"username":"ibrahimbuk16", "password":"ibrahim19"})
 
 print(response.json())

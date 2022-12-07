@@ -1,6 +1,7 @@
 """ Main Flask App """
 from flask import Flask
 from flask_restful import Api, Resource, reqparse, fields, marshal_with, abort
+from flask_bcrypt import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 
 # Flask App initialization and Database Setting
@@ -14,6 +15,12 @@ class UserModel(db.Model):
     """ Table for Username and Password """
     username = db.Column(db.String, primary_key=True)
     password = db.Column(db.String, nullable=False)
+    
+    def hash_password(self):
+        self.password = generate_password_hash(self.password).decode('utf8')
+
+    def check_password(self, password):
+        return check_password_hash(self.password, password)
 
 class CarModel(db.Model):
     """ Table for Detail Information about a car """
@@ -82,6 +89,7 @@ class Register(Resource):
         args = user_args.parse_args()
         User_Pass_Validate(args["username"], args["password"])
         user = UserModel(username=args["username"], password=args["password"])
+        user.hash_password()
         try:
             db.session.add(user)
             db.session.commit()
@@ -91,7 +99,7 @@ class Register(Resource):
         return user, 201
 
 # Redirecting the Endpoints to the correct URL
-api.add_resource(Register, "/user/register")
+api.add_resource(Register, "/auth/register")
 
 
 # Settings for running the Flask Application
