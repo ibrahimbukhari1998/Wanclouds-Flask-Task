@@ -1,12 +1,18 @@
 """ Main Flask App """
-from flask import Flask
+from flask import Flask, session
+from flask_session import Session
 from flask_restful import Api, Resource, reqparse, fields, marshal_with, abort
 from flask_bcrypt import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
+# from datetime import timedelta
 
 # Flask App initialization and Database Setting
 app = Flask(__name__)
 api = Api(app)
+app.config['SECRET_KEY'] = '$yedMuh4mm4d13rah!m3ukhar1'
+app.config["SESSION_PERMANENT"] = False
+app.config["SESSION_TYPE"] = "filesystem"
+Session(app)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 db = SQLAlchemy(app)
 
@@ -82,7 +88,7 @@ user_fields = {
 
 # Building various Api Endpoints 
 class Register(Resource):
-    """ The API to handle Sign Up for new users """
+    """ This Endpoint handles Sign Up for new users """
     
     @marshal_with(user_fields)
     def post(self):
@@ -96,10 +102,46 @@ class Register(Resource):
         except:
             abort(400, message="Error adding new user to database")
         
-        return user, 201
+        return user.username, 201
+
+
+class Login(Resource):
+    """ This Endpoint logs in already registered users """
+    
+    def post(self):
+        args = user_args.parse_args()
+        user = UserModel.query.filter_by(username=args["username"]).first()
+        
+        if 'username' not in session:
+            if user:
+                pass_check = user.check_password(args["password"])
+                if pass_check:
+                    session["username"] = args["username"]
+                    return {"message":"You are logged in"}
+                else:
+                    abort(400, message="Invalid username or password")
+            else:
+                abort(400, message="Invalid username or password")
+        else:
+            string_message = session["username"] + "is already logged in"
+            abort(400, message=string_message)
+
+
+class Logout(Resource):
+    """ This Endpoint logs out an already logged in user """
+    
+    def get(self):
+        if 'username' in session:
+            session.pop('username', None)
+            return {"message":"You are Logged Out"}
+        else:
+            abort(400, message="You are not logged in")
+
 
 # Redirecting the Endpoints to the correct URL
 api.add_resource(Register, "/auth/register")
+api.add_resource(Login, "/auth/login")
+api.add_resource(Logout, "/auth/logout")
 
 
 # Settings for running the Flask Application
