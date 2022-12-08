@@ -127,7 +127,7 @@ class Register(Resource):
         except:
             abort(400, message="Error adding new user to database")
         
-        return user.username, 201
+        return {"username":user.username}, 201
 
 
 class Login(Resource):
@@ -167,15 +167,36 @@ class StartSync(Resource):
     """ This starts the sync of the dataset """
     
     def get(self):
-        # Sync_dataset()
-        Sync_dataset.apply_async(countdown=86400)
+        Sync_dataset()
+        # Sync_dataset.apply_async(countdown=86400)
         return CarModel.query.count()
+
+
+class Search(Resource):
+    
+    def get(self, car_model, car_year):
+        query = CarModel.query.filter_by(Model=car_model).filter_by(Year=car_year)
+        tmp_result = []
+        for cars in query:
+            tmp_dic = {
+                "objectId": cars.objectId,
+                "Year": cars.Year,
+                "Make": cars.Make,
+                "Model": cars.Model,
+                "Category": cars.Category,
+                "createdAt": cars.createdAt,
+                "updatedAt": cars.updatedAt
+            }
+            tmp_result.append(tmp_dic)        
+        return {"result":tmp_result}, 201
+
 
 # Redirecting the Endpoints to the correct URL
 api.add_resource(Register, "/auth/register")
 api.add_resource(Login, "/auth/login")
 api.add_resource(Logout, "/auth/logout")
 api.add_resource(StartSync, "/sync")
+api.add_resource(Search, "/car/<string:car_model>/<int:car_year>")
 
 
 
@@ -189,9 +210,12 @@ def Sync_dataset():
     car_query = CarModel.query.all()
     
     for car in data["results"]:
-        timestamp = list(car["createdAt"])
-        timestamp_year = timestamp[:4]
-        car_year = int(''.join(timestamp_year))
+        # This is used if we want our Year to be equal to "cretaedAt" year
+        # timestamp = list(car["createdAt"])
+        # timestamp_year = timestamp[:4]
+        # car_year = int(''.join(timestamp_year))
+        
+        car_year = car["Year"]
         
         if current_year-car_year<=10:
             car_check = True
