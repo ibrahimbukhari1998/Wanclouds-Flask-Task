@@ -1,6 +1,7 @@
 """ Main Flask App """
 import json
 import urllib
+import jsonify
 import requests
 from flask import Flask, session
 from flask_session import Session
@@ -9,6 +10,8 @@ from flask_bcrypt import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 from celery import Celery
 from datetime import date
+from flask_marshmallow import Marshmallow
+
 
 
 # Flask App initialization and Database Setting
@@ -23,6 +26,7 @@ app.config['CELERY_RESULT_BACKEND'] = 'redis://localhost:6379/0'
 
 Session(app)
 db = SQLAlchemy(app)
+ma = Marshmallow(app)
 celery = Celery(app.name, broker=app.config['CELERY_BROKER_URL'])
 celery.conf.update(app.config)
 
@@ -58,6 +62,18 @@ class CarModel(db.Model):
     Category = db.Column(db.String, nullable=False)
     createdAt = db.Column(db.String, nullable=False)
     updatedAt = db.Column(db.String, nullable=False)
+
+
+# Marshmallow Schemas which auto generate form the Models
+class UserModelSchema(ma.SQLAlchemyAutoSchema):
+    class Meta:
+        model = UserModel
+
+
+class CarModelSchema(ma.SQLAlchemyAutoSchema):
+    class Meta:
+        model = CarModel
+
 
 
 # This Creates the defined Table Schema in the database
@@ -175,21 +191,9 @@ class StartSync(Resource):
 class Search(Resource):
     
     def get(self, car_model, car_year):
-        query = CarModel.query.filter_by(Model=car_model).filter_by(Year=car_year)
-        tmp_result = []
-        for cars in query:
-            tmp_dic = {
-                "objectId": cars.objectId,
-                "Year": cars.Year,
-                "Make": cars.Make,
-                "Model": cars.Model,
-                "Category": cars.Category,
-                "createdAt": cars.createdAt,
-                "updatedAt": cars.updatedAt
-            }
-            tmp_result.append(tmp_dic)        
-        return {"result":tmp_result}, 201
-
+        carschema = CarModelSchema(many=True)
+        query = CarModel.query.filter_by(Model=car_model).filter_by(Year=car_year).all()  
+        return carschema.dump(query)
 
 # Redirecting the Endpoints to the correct URL
 api.add_resource(Register, "/auth/register")
@@ -234,7 +238,6 @@ def Sync_dataset():
                     print("Car of Object ID ", car["objectId"], "has been added to the database")
                 except:
                     print("Oops! Something went wrong while adding Cars to the Database")
-            
 
 
 
